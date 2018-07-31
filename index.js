@@ -28,13 +28,13 @@ const LaunchRequestHandler = {
 
 const StoryHandler = {
     canHandle(handlerInput) {
-        
+
         const request = handlerInput.requestEnvelope.request;
         const attributes = handlerInput.attributesManager.getSessionAttributes();
         return request.type === "IntentRequest" &&
             (request.intent.name === "StartStoryIntent" ||
                 request.intent.name === "AMAZON.StartOverIntent" ||
-                (request.intent.name === "AMAZON.YesIntent" && !attributes.gameState ) );
+                (request.intent.name === "AMAZON.YesIntent" && !attributes.gameState));
     },
     handle(handlerInput) {
         console.log("Story handler");
@@ -49,25 +49,31 @@ const StoryHandler = {
                 } else {
                     attributes.numberOfPlayers = players.length;
                     attributes.players = players;
-                    attributes.currentPlayer = players[0]["member_id"];
                     attributes.counter = 1;
+                    attributes.currentPlayer = players[attributes.counter - 1]["member_id"];
                     attributes.gameState = IN_PROGRESS;
-                    
-                    questions.getQuestion(attributes.currentPlayer, function (err, question) {
-                        if (err) {
-                            reject(handlerInput.responseBuilder
-                                .speak("Rejecting")
-                                .withShouldEndSession(false)
-                                .getResponse())
-                        } else {
-                            attributes.currentQuestion = question;
-                            handlerInput.attributesManager.setSessionAttributes(attributes);
-                            resolve(handlerInput.responseBuilder
-                                .speak(question["question"])
-                                .withShouldEndSession(false)
-                                .getResponse())
-                        }
-                    });
+                    handlerInput.attributesManager.setSessionAttributes(attributes);
+                    let speech = "Is player " + attributes.currentPlayer + " present and ready?";
+                    resolve( handlerInput.responseBuilder
+                        .speak(speech)
+                        .withShouldEndSession(false)
+                        .getResponse())
+
+                    // questions.getQuestion(attributes.currentPlayer, function (err, question) {
+                    //     if (err) {
+                    //         reject(handlerInput.responseBuilder
+                    //             .speak("Rejecting")
+                    //             .withShouldEndSession(false)
+                    //             .getResponse())
+                    //     } else {
+                    //         attributes.currentQuestion = question;
+                    //         handlerInput.attributesManager.setSessionAttributes(attributes);
+                    //         resolve(handlerInput.responseBuilder
+                    //             .speak(question["question"])
+                    //             .withShouldEndSession(false)
+                    //             .getResponse())
+                    //     }
+                    // });
 
                 }
             });
@@ -108,25 +114,11 @@ const AnswerHandler = {
                                 .getResponse())
                         } else {
                             attributes.currentPlayer = attributes.players[attributes.counter - 1]["member_id"];
-                            
-                            speech += "Question for player " + attributes.counter+". <break time='200ms'/>";
-                            questions.getQuestion(attributes.currentPlayer, function (err, data) {
-                                if (err) {
-                                    //INTERNAL SERVER ERROR
-                                    reject(handlerInput.responseBuilder
-                                        .speak("Rejected. Please repeat")
-                                        .withShouldEndSession(true)
-                                        .getResponse())
-                                }else{
-                                    attributes.currentQuestion = data;
-                                    handlerInput.attributesManager.setSessionAttributes(attributes);
-                                    speech += data["question"]
-                                    resolve(handlerInput.responseBuilder
-                                        .speak(speech)
-                                        .withShouldEndSession(false)
-                                        .getResponse())
-                                }
-                            });
+                            speech += "Is player "+attributes.currentPlayer+" present and ready?";
+                            resolve(handlerInput.responseBuilder
+                                .speak(speech)
+                                .withShouldEndSession(false)
+                                .getResponse());
                             
                         }
 
@@ -134,35 +126,22 @@ const AnswerHandler = {
                 });
             } else { //answer not correct
                 let speech = "That is incorrect";
-                        attributes.counter += 1;
-                        if (attributes.counter > attributes.numberOfPlayers) {
-                            resolve(handlerInput.responseBuilder
-                                .speak(speech + " game complete")
-                                .getResponse())
-                        } else {
-                            attributes.currentPlayer = attributes.players[attributes.counter - 1]["member_id"];
-                            
-                            speech += "Question for player " + attributes.counter+". <break time='200ms'/>";
-                            questions.getQuestion(attributes.currentPlayer, function (err, data) {
-                                if (err) {
-                                    //INTERNAL SERVER ERROR
-                                    reject(handlerInput.responseBuilder
-                                        .speak("Rejected. Please repeat")
-                                        .withShouldEndSession(true)
-                                        .getResponse())
-                                }else{
-                                    attributes.currentQuestion = data;
-                                    handlerInput.attributesManager.setSessionAttributes(attributes);
-                                    speech += data["question"]
-                                    resolve(handlerInput.responseBuilder
-                                        .speak(speech)
-                                        .withShouldEndSession(false)
-                                        .getResponse())
-                                }
-                            });
-                            
-                        }
-                
+                attributes.counter += 1;
+                if (attributes.counter > attributes.numberOfPlayers) {
+                    resolve(handlerInput.responseBuilder
+                        .speak(speech + " game complete")
+                        .getResponse())
+                } else {
+                    attributes.currentPlayer = attributes.players[attributes.counter - 1]["member_id"];
+                    handlerInput.attributesManager.setSessionAttributes(attributes);
+                    speech += "Is player "+attributes.currentPlayer+" present and ready?";
+                    resolve(handlerInput.responseBuilder
+                        .speak(speech)
+                        .withShouldEndSession(false)
+                        .getResponse());
+
+                }
+
             }
         });
     }
@@ -194,10 +173,92 @@ const PlayerPresentHandler = {
     },
     handle(handlerInput) {
         console.log("PlayerPresentHandler");
-        return handlerInput.responseBuilder
-                    .speak("Reached player present handler")
-                    .withShouldEndSession(true)
-                    .getResponse()
+        const attributes = handlerInput.attributesManager.getSessionAttributes();
+        return new Promise((resolve, reject) => {
+            questions.getQuestion(attributes.currentPlayer, function (err, question) {
+                if(err){//INTERNAL SERVER ERROR
+                    reject(handlerInput.responseBuilder
+                        .speak("Internal server error")
+                        .withShouldEndSession(true)
+                        .getResponse())
+                }else{
+                    attributes.currentQuestion = question;
+                    handlerInput.attributesManager.setSessionAttributes(attributes);
+                    let speech = "Question for player "+attributes.currentPlayer+"<break time='200ms'/>";
+                    speech += question["question"];
+                    resolve(handlerInput.responseBuilder
+                        .speak(speech)
+                        .withShouldEndSession(false)
+                        .getResponse());
+                }
+            });
+        });        
+    }
+
+}
+
+
+const PlayerNotPresentHandler = {
+    canHandle(handlerInput) {
+        const request = handlerInput.requestEnvelope.request;
+        const attributes = handlerInput.attributesManager.getSessionAttributes();
+        return request.type === "IntentRequest" &&
+            request.intent.name === "AMAZON.NoIntent" && attributes.gameState === IN_PROGRESS;
+    },
+    handle(handlerInput) {
+        console.log("PlayerNotPresentHandler");
+        const attributes = handlerInput.attributesManager.getSessionAttributes();
+        attributes.counter += 1;
+        if (attributes.counter > attributes.numberOfPlayers) {
+            return handlerInput.responseBuilder
+                .speak("Ok, game complete")
+                .withShouldEndSession(true)
+                .getResponse();
+        }else{
+            attributes.currentPlayer = attributes.players[attributes.counter - 1]["member_id"];
+            handlerInput.attributesManager.setSessionAttributes(attributes);
+            let speech = "Is player "+attributes.currentPlayer+" present and ready?";
+            return handlerInput.responseBuilder
+                            .speak(speech)
+                            .withShouldEndSession(false)
+                            .getResponse()
+            // return new Promise((resolve, reject) => {
+            //     questions.getQuestion(attributes.currentPlayer, function (err, question) {
+            //         if(err){//INTERNAL SERVER ERROR
+            //             reject(handlerInput.responseBuilder
+            //                 .speak("Internal server error")
+            //                 .withShouldEndSession(true)
+            //                 .getResponse())
+            //         }else{
+            //             attributes.currentQuestion = question;
+            //             handlerInput.attributesManager.setSessionAttributes(attributes);
+            //             let speech = "Question for player "+attributes.currentPlayer+"<break time='200ms'/>";
+            //             speech += question["question"];
+            //             resolve(handlerInput.responseBuilder
+            //                 .speak(speech)
+            //                 .withShouldEndSession(false)
+            //                 .getResponse());
+            //         }
+            //     });
+            // });
+        }
+        // return new Promise((resolve, reject) => {
+        //     questions.getQuestion(attributes.currentPlayer, function (err, question) {
+        //         if(err){//INTERNAL SERVER ERROR
+        //             reject(handlerInput.responseBuilder
+        //                 .speak("Internal server error")
+        //                 .withShouldEndSession(true)
+        //                 .getResponse())
+        //         }else{
+        //             let speech = "Question for player "+attributes.currentPlayer+"<break time='200ms'/>";
+        //             speech += question["question"];
+        //             resolve(handlerInput.responseBuilder
+        //                 .speak(speech)
+        //                 .withShouldEndSession(false)
+        //                 .getResponse());
+        //         }
+        //     });
+        // });        
     }
 
 }
@@ -295,6 +356,7 @@ exports.handler = skillBuilder
         AnswerHandler,
         FinalScoreHandler,
         TestHandler,
-        PlayerPresentHandler
+        PlayerPresentHandler,
+        PlayerNotPresentHandler
     )
     .lambda();
